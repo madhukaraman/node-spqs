@@ -1,0 +1,228 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Simple Priority Queue Service Infrastructure'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name
+
+Resources:
+  # SQS Queue
+  PriorityQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub priority-queue-${Environment}
+      VisibilityTimeout: 30
+      MessageRetentionPeriod: 1209600  # 14 days
+      ReceiveMessageWaitTimeSeconds: 20  # Long polling
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt PriorityQueueDLQ.Arn
+        maxReceiveCount: 5
+
+  # Dead Letter Queue for failed messages
+  PriorityQueueDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub priority-queue-dlq-${Environment}
+      MessageRetentionPeriod: 1209600  # 14 days
+
+  # ElastiCache Redis for priority management
+  RedisSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: Subnet group for Priority Queue Redis
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+
+  RedisSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Priority Queue Redis
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !Ref AppSecurityGroup
+
+  RedisCluster:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      Engine: redis
+      CacheNodeType: cache.t3.micro
+      NumCacheNodes: 1
+      VpcSecurityGroupIds:
+        - !GetAtt RedisSecurityGroup.GroupId
+      CacheSubnetGroupName: !Ref RedisSubnetGroup
+      AutoMinorVersionUpgrade: true
+      CacheParameterGroupName: default.redis6.x
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # VPC and Networking (simplified)
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub priority-queue-vpc-${Environment}
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub priority-queue-private-subnet-1-${Environment}
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub priority-queue-private-subnet-2-${Environment}
+
+  # Security Group for application
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for applications using the priority queue
+      VpcId: !Ref VPC
+
+  # IAM Role for applications using the priority queue
+  PriorityQueueRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
+      Path: /
+
+  # CloudWatch Dashboard for monitoring
+  PriorityQueueDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub priority-queue-dashboard-${Environment}
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", "${PriorityQueue.QueueName}" ],
+                  [ ".", "ApproximateNumberOfMessagesNotVisible", ".", "." ],
+                  [ ".", "ApproximateNumberOfMessagesDelayed", ".", "." ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "Queue Metrics",
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/SQS", "NumberOfMessagesSent", "QueueName", "${PriorityQueue.QueueName}" ],
+                  [ ".", "NumberOfMessagesReceived", ".", "." ],
+                  [ ".", "NumberOfMessagesDeleted", ".", "." ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "Message Operations",
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/SQS", "ApproximateAgeOfOldestMessage", "QueueName", "${PriorityQueue.QueueName}" ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "Message Age",
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", "${PriorityQueueDLQ.QueueName}" ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "Dead Letter Queue",
+                "period": 300
+              }
+            }
+          ]
+        }
+
+Outputs:
+  QueueUrl:
+    Description: URL of the SQS queue
+    Value: !Ref PriorityQueue
+    Export:
+      Name: !Sub ${AWS::StackName}-QueueUrl
+
+  QueueArn:
+    Description: ARN of the SQS queue
+    Value: !GetAtt PriorityQueue.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-QueueArn
+
+  RedisEndpoint:
+    Description: Endpoint of the Redis cluster
+    Value: !GetAtt RedisCluster.RedisEndpoint.Address
+    Export:
+      Name: !Sub ${AWS::StackName}-RedisEndpoint
+
+  RedisPort:
+    Description: Port of the Redis cluster
+    Value: !GetAtt RedisCluster.RedisEndpoint.Port
+    Export:
+      Name: !Sub ${AWS::StackName}-RedisPort
