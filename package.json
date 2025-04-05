@@ -1,11 +1,11 @@
 {
-  "name": "node-spqs",
+  "name": "@mnmadhukar/node-spqs",
   "version": "1.0.0",
   "description": "A priority queue service built on top of AWS SQS with Redis for priority management",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc",
+    "build": "rimraf dist && tsc",
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint 'src/**/*.ts'",
@@ -23,7 +23,7 @@
     "queue",
     "typescript"
   ],
-  "author": "",
+  "author": "Aman Madhukar <madhukaraman02@gmail.com>",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -49,6 +49,7 @@
     "typescript": "^5.8.2"
   },
   "files": [
-    "dist/**/*"
+    "dist/**/*",
+    "README.md"
   ]
 }

@@ -14,7 +14,12 @@ A Node.js library that provides a priority queue implementation on top of AWS SQ
 ## Installation
 
 ```bash
-npm install simple-priority-queue-service
+npm install @mnmadhukar/node-spqs
+# or
+yarn add @mnmadhukar/node-spqs
+# or
+pnpm add @mnmadhukar/node-spqs
+
 ```
 
 ## Requirements
@@ -32,8 +37,8 @@ import { PriorityQueueService } from 'simple-priority-queue-service';
 
 // Initialize the service
 const queueService = new PriorityQueueService({
-  region: process.env.AWS_REGION || 'ap-south-1' || 'ap-south-1',
-  queueUrl: 'https://sqs.us-east-1.amazonaws.com/123456789012/my-queue',
+  region: process.env.AWS_REGION || 'ap-south-1',
+  queueUrl: 'https://sqs.ap-south-1.amazonaws.com/123456789012/my-queue',
   redisUrl: 'redis://localhost:6379',
   priorityLevels: 3, // 0, 1, 2 (0 being highest priority)
 });
@@ -93,7 +98,7 @@ await queueService.disconnect();
 ```typescript
 const queueService = new PriorityQueueService({
   region: process.env.AWS_REGION || 'ap-south-1',
-  queueUrl: 'https://sqs.us-east-1.amazonaws.com/123456789012/my-queue',
+  queueUrl: 'https://sqs.ap-south-1.amazonaws.com/123456789012/my-queue',
   redisUrl: 'redis://localhost:6379',
   priorityLevels: 5, // 0, 1, 2, 3, 4
   
