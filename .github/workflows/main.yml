@@ -1,0 +1,19 @@
+name: Analyze Dependencies
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+# Example GitHub Actions configuration
+jobs:
+  analyze-dependencies:
+    runs-on: ubuntu-latest
+    container: madhukaraman/dependency-generator-core:latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Analyze dependencies
+        # The src/index.js is the dependency generator script inside the container, not in your repo
+        run: cd /app && node src/index.js --dir $GITHUB_WORKSPACE --send
